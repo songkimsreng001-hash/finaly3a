@@ -1,6 +1,6 @@
 <?php
 
-$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$id    = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $event = getEvent($id);
 
 if (!$event) {
@@ -8,112 +8,137 @@ if (!$event) {
     exit;
 }
 
-if (isset($_POST['reg_id'], $_POST['status'])) {
-    $allowed = ['approved', 'rejected'];
-    $status  = in_array($_POST['status'], $allowed) ? $_POST['status'] : 'pending';
+$titleErr = $descErr = $locErr = $dateErr = $capErr = '';
+$title    = $event->title;
+$desc     = $event->description;
+$loc      = $event->location;
+$date     = date('Y-m-d\TH:i', strtotime($event->event_date));
+$capacity = $event->capacity;
 
-    updateRegistrationStatus((int)$_POST['reg_id'], $status);
+if (isset($_POST['submit'])) {
+    $title    = trim($_POST['title']      ?? '');
+    $desc     = trim($_POST['desc']       ?? '');
+    $loc      = trim($_POST['location']   ?? '');
+    $date     = trim($_POST['event_date'] ?? '');
+    $capacity = (int)($_POST['capacity']  ?? 50);
+    $photo    = $_FILES['image'] ?? [];
 
-    echo "
-    <script>
-    Swal.fire({
-        icon: 'success',
-        title: 'Updated!',
-        text: 'Status updated successfully'
-    }).then(() => {
-        window.location.href = './?page=event/registrations&id=$id';
-    });
-    </script>
-    ";
-    exit;
+    if (empty($title))    $titleErr = 'Please enter event title.';
+    if (empty($desc))     $descErr  = 'Please enter description.';
+    if (empty($loc))      $locErr   = 'Please enter location.';
+    if (empty($date))     $dateErr  = 'Please select date and time.';
+    if ($capacity < 1)    $capErr   = 'Capacity must be at least 1.';
+
+    if (!$titleErr && !$descErr && !$locErr && !$dateErr && !$capErr) {
+        try {
+            if (updateEvent($id, $title, $desc, $loc, $date, $capacity, $photo)) {
+                echo '<div class="alert alert-success">Event updated! <a href="./?page=events">View events</a></div>';
+                $event = getEvent($id);
+            }
+        } catch (Exception $e) {
+            echo '<div class="alert alert-danger">' . $e->getMessage() . '</div>';
+        }
+    }
 }
-
-$regs = getEventRegistrations($id);
 ?>
-
 <div class="container mt-4">
-
-    <a href="./?page=event/detail&id=<?php echo $event->id ?>"
-       class="btn btn-sm btn-outline-warning mb-3">
+    <a href="./?page=events" class="btn btn-sm btn-outline-warning mb-3">
         <i class="bi bi-arrow-left"></i> Back
     </a>
+    <div class="col-md-8 col-lg-7 mx-auto">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <h4 class="fw-bold mb-3"><i class="bi bi-pencil-square text-primary"></i> Edit Event</h4>
 
-    <h4 class="fw-bold mb-3">Registrations</h4>
+                <form method="post" action="./?page=event/edit&id=<?php echo $id ?>"
+                      enctype="multipart/form-data">
+                    <div class="mb-3 text-center">
+                        <input type="file" name="image" id="eventImg" hidden accept=".jpg,.jpeg,.png">
+                        <label for="eventImg" role="button">
+                            <img id="imgPreview"
+                                 src="<?php echo $event->image ? htmlspecialchars($event->image) : './assets/images/loading.png' ?>"
+                                 class="img-fluid rounded shadow-sm"
+                                 style="max-height:200px;object-fit:cover;min-width:100%;">
+                        </label>
+                        <div class="small text-muted mt-1">Click to change banner image</div>
+                    </div>
 
-    <div class="table-responsive">
-        <table class="table table-bordered align-middle">
-            <thead class="table-dark">
-                <tr>
-                    <th>#</th>
-                    <th>Name</th>
-                    <th>Status</th>
-                    <th width="150">Action</th>
-                </tr>
-            </thead>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Title</label>
+                        <input name="title" value="<?php echo htmlspecialchars($title) ?>"
+                               type="text" class="form-control <?php echo $titleErr ? 'is-invalid' : '' ?>">
+                        <div class="invalid-feedback"><?php echo $titleErr ?></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Description</label>
+                        <textarea name="desc" rows="4"
+                                  class="form-control <?php echo $descErr ? 'is-invalid' : '' ?>"
+                        ><?php echo htmlspecialchars($desc) ?></textarea>
+                        <div class="invalid-feedback"><?php echo $descErr ?></div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-semibold">Location</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-geo-alt"></i></span>
+                                <input name="location" value="<?php echo htmlspecialchars($loc) ?>"
+                                       type="text"
+                                       class="form-control <?php echo $locErr ? 'is-invalid' : '' ?>">
+                                <div class="invalid-feedback"><?php echo $locErr ?></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-semibold">Date &amp; Time</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-calendar3"></i></span>
+                                <input name="event_date" value="<?php echo htmlspecialchars($date) ?>"
+                                       type="datetime-local"
+                                       class="form-control <?php echo $dateErr ? 'is-invalid' : '' ?>">
+                                <div class="invalid-feedback"><?php echo $dateErr ?></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Capacity</label>
+                        <div class="input-group" style="max-width:200px;">
+                            <span class="input-group-text"><i class="bi bi-people"></i></span>
+                            <input name="capacity" value="<?php echo $capacity ?>" type="number" min="1"
+                                   class="form-control <?php echo $capErr ? 'is-invalid' : '' ?>">
+                            <div class="invalid-feedback"><?php echo $capErr ?></div>
+                        </div>
+                    </div>
 
-            <tbody>
-            <?php $i=1; while ($row = $regs->fetch_object()): ?>
-                <tr>
-                    <td><?= $i++ ?></td>
-                    <td><?= htmlspecialchars($row->name) ?></td>
-
-                    <td>
-                        <span class="badge 
-                            <?= $row->status=='approved'?'bg-success':
-                                ($row->status=='rejected'?'bg-danger':'bg-warning') ?>">
-                            <?= $row->status ?>
-                        </span>
-                    </td>
-
-                    <td>
-                        <form method="post" class="d-inline action-form">
-                            <input type="hidden" name="reg_id" value="<?= $row->id ?>">
-                            <input type="hidden" name="status" value="approved">
-                            <button type="button" class="btn btn-success btn-sm btn-approve">✔</button>
-                        </form>
-
-                        <form method="post" class="d-inline action-form">
-                            <input type="hidden" name="reg_id" value="<?= $row->id ?>">
-                            <input type="hidden" name="status" value="rejected">
-                            <button type="button" class="btn btn-danger btn-sm btn-reject">✖</button>
-                        </form>
-                    </td>
-                </tr>
-            <?php endwhile; ?>
-            </tbody>
-        </table>
+                    <div class="d-flex gap-2">
+                        <button type="submit" name="submit" class="btn btn-primary px-4">
+                            <i class="bi bi-check-lg"></i> Save Changes
+                        </button>
+                        <a href="./?page=events" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
-
-
 <script>
-document.querySelectorAll('.btn-approve').forEach(btn => {
-    btn.onclick = () => {
-        let form = btn.closest('form');
+document.getElementById('eventImg').addEventListener('change', function () {
+    const file = this.files[0];
+    if (!file) return;
 
-        Swal.fire({
-            title: 'Approve user?',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonColor: '#198754'
-        }).then(r => {
-            if (r.isConfirmed) form.submit();
-        });
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+    const maxSize      = 500000;
+
+    if (file.size > maxSize) {
+        alert('File size is too large! Maximum allowed size is 500KB.');
+        this.value = '';
+        return;
     }
-});
 
-document.querySelectorAll('.btn-reject').forEach(btn => {
-    btn.onclick = () => {
-        let form = btn.closest('form');
-
-        Swal.fire({
-            title: 'Reject user?',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#dc3545'
-        }).then(r => {
-            if (r.isConfirmed) form.submit();
-        });
+    if (!allowedTypes.includes(file.type)) {
+        alert('Invalid file type. Only JPG, JPEG, and PNG are allowed.');
+        this.value = '';
+        return;
     }
+
+    document.getElementById('imgPreview').src = URL.createObjectURL(file);
 });
 </script>
